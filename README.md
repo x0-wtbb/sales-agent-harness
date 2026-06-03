@@ -2,15 +2,17 @@
 
 Minimal runnable harness for a B2B SDR workflow. It accepts conversation JSON, keeps lead/session state, proposes tool actions, validates guardrails, executes local mock tools, and returns a safe assistant message plus public state.
 
+Code repository: https://github.com/x0-wtbb/sales-agent-harness
+
 Scope: this is a local written-exercise harness with mock tools, a local mock LLM planner, and an in-memory store. The assignment explicitly allows a local mock LLM, so the lack of a real LLM service is an intentional offline boundary rather than a correctness gap. The project demonstrates workflow boundaries and regression coverage; it is not connected to external CRM, calendar, KB, queue, or production LLM services.
 
-## Install
+## Installation
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-## Run
+## Run The Harness
 
 ```bash
 python3 main.py run --input sales_agent_harness/examples/input_b.json
@@ -30,7 +32,7 @@ Planner choices:
 
 No `llm` CLI choice is exposed until a real external adapter is implemented and passes the same contract/eval gates.
 
-## Eval
+## Run Eval
 
 ```bash
 python3 main.py eval
@@ -40,6 +42,20 @@ python3 -m pytest -q
 ```
 
 The eval suite covers pricing hallucination, metric guarantees, customer cases, feature grounding, legal/security handoff, booking preconditions, invalid/corrected email, timezone ambiguity, CRM write success/failure, cross-turn outbox/idempotency, prompt injection, lead-history conflict, KB no-result/restricted cases, and high-value custom quote handoff.
+
+## Architecture
+
+The project is organized as an Agent Harness rather than a prompt-only sales bot. The LLM or mock LLM proposes candidate intent, facets, and tool calls; deterministic code decides what is allowed, executes tools, validates claims, and advances business state.
+
+- `main.py`: CLI entrypoint for run, eval, and prompt comparison.
+- `sales_agent_harness/harness.py`: orchestration layer for state loading, planning, validation, tool execution, fallback handling, and response shaping.
+- `sales_agent_harness/policy.py`: rule-based planner, mock LLM planner wrapper, and allowed-action routing.
+- `sales_agent_harness/state.py`: lead memory, qualification scoring, booking state transitions, CRM payload construction, and evidence policy updates.
+- `sales_agent_harness/validators.py`: precondition and postcondition guardrails for tool permissions, booking truth, CRM consistency, and unsupported claims.
+- `sales_agent_harness/tools.py`: local mock implementations for lead context, KB search, calendar slots, demo booking, CRM notes, handoff, and outbox.
+- `sales_agent_harness/grounding.py`: requested-facet extraction and evidence matching for product, pricing, metric, customer-case, and technical/security claims.
+- `sales_agent_harness/eval_runner.py` and `sales_agent_harness/eval_cases.yaml`: deterministic regression evals for key safety and workflow failures.
+- `tests/`: unit and integration tests for tools, validators, grounding, normalizer behavior, prompt integration, and CLI surface.
 
 ## Compare Prompts
 
@@ -116,6 +132,16 @@ Default output shows public tool calls and hides tool result payloads/internal s
 ```
 
 Default `tool_calls` matches the written-exercise contract and includes only public call shape: `tool_name` and `arguments`. Use `--debug` for executed tool results (`success`, `data`, `error`), trajectory, and full `debug_state`. Use `--include-trajectory` for trajectory without full internal state.
+
+## Known Issues And MVP Boundaries
+
+- No production LLM adapter is enabled. `MockLLMPlanner` is a local model double used for prompt-contract regression.
+- No real CRM, calendar, KB, queue, or handoff service is connected. All tool behavior is mocked locally.
+- State is stored in `InMemoryStore`, so data is process-local and not durable across application restarts.
+- `TriggerEvent` supports only `event_type="conversation"` in this MVP.
+- `compare-prompts` is a local prompt-contract report, not an online A/B test or provider benchmark.
+- The KB is a small hand-written fixture. Hidden or broader production KB behavior would need additional eval cases.
+- A real LLM adapter should not be exposed until schema repair, evidence grounding, prompt-injection, observability, and hidden adversarial eval gates pass.
 
 ## Documents
 
