@@ -1,0 +1,9 @@
+{
+  "lead_id": "L123",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "我们想下周安排一个 Demo，我在新加坡，邮箱是 alex@demo.com，想了解怎么对接我们 CRM。"
+    }
+  ]
+}

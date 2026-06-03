@@ -1,0 +1,17 @@
+{
+  "lead_id": "L123",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "我们是 300 人制造业公司，想看看 AI 能不能帮销售跟进线索。"
+    },
+    {
+      "role": "assistant",
+      "content": "可以的，请问你们销售团队多大？"
+    },
+    {
+      "role": "user",
+      "content": "25 人，经常漏跟进客户。预算还没定。"
+    }
+  ]
+}
