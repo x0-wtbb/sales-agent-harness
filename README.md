@@ -172,6 +172,4 @@ python3 main.py compare-prompts --strict
 
 ## 文档
 
-- 第一部分答卷：`docs/part1_answer.md`
-- AI 协作日志：`docs/ai_collaboration_log.md`
 - MVP scope/refactor notes：`docs/mvp_scope_and_refactor_notes.md`
