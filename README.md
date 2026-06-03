@@ -1,111 +1,119 @@
 # P-12 Sales Operations Action Harness
 
-Minimal runnable harness for a B2B SDR workflow. It accepts conversation JSON, keeps lead/session state, proposes tool actions, validates guardrails, executes local mock tools, and returns a safe assistant message plus public state.
+代码仓库：[https://github.com/x0-wtbb/sales-agent-harness](https://github.com/x0-wtbb/sales-agent-harness)
 
-Code repository: https://github.com/x0-wtbb/sales-agent-harness
+这是一个面向 B2B SDR 场景的最小可运行 Sales Agent Harness。它接收对话 JSON，维护线索和会话状态，生成候选工具动作，执行本地 mock 工具，并通过前置/后置校验返回安全的助手回复和公开状态。
 
-Scope: this is a local written-exercise harness with mock tools, a local mock LLM planner, and an in-memory store. The assignment explicitly allows a local mock LLM, so the lack of a real LLM service is an intentional offline boundary rather than a correctness gap. The project demonstrates workflow boundaries and regression coverage; it is not connected to external CRM, calendar, KB, queue, or production LLM services.
+本项目是笔试题的本地 MVP 实现：包含 mock tools、本地 mock LLM planner、规则 planner、内存态 store、自动化 eval 和单元测试。项目没有连接真实 CRM、日历、知识库、队列或生产 LLM 服务；这是刻意保留的离线边界，不是运行缺口。
 
-## Installation
+## 安装方式
+
+建议使用 Python 3.10+。在项目根目录运行：
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-## Run The Harness
+主要依赖：
+
+- `pydantic>=2.0`
+- `pyyaml>=6.0`
+- `requests>=2.31`
+- `pytest>=8.0`
+
+## 运行方式
+
+运行示例输入：
 
 ```bash
 python3 main.py run --input sales_agent_harness/examples/input_b.json
 python3 main.py run --input sales_agent_harness/examples/input_booking.json --debug
+```
+
+也可以使用兼容入口：
+
+```bash
 python3 -m sales_agent_harness.run_cli run --input sales_agent_harness/examples/input_b.json
 python3 run_cli.py run --input sales_agent_harness/examples/input_b.json
 ```
 
-`main.py` owns the CLI implementation; `sales_agent_harness.run_cli` and root `run_cli.py` are compatibility wrappers.
+`main.py` 是 CLI 主入口；`sales_agent_harness.run_cli` 和根目录 `run_cli.py` 只是兼容包装。
 
-Planner choices:
+Planner 选项：
 
-- default `harness_v2`: deterministic `RuleBasedPlanner`
-- default `prompt_v1|prompt_v2`: local `MockLLMPlanner`
-- `--planner rule`: deterministic rule planner
-- `--planner mock_llm` or `--planner auto`: local mock LLM path
+- 默认 `harness_v2`：使用确定性的 `RuleBasedPlanner`
+- 默认 `prompt_v1` / `prompt_v2`：使用本地 `MockLLMPlanner`
+- `--planner rule`：强制使用规则 planner
+- `--planner mock_llm` 或 `--planner auto`：使用本地 mock LLM 路径
 
-No `llm` CLI choice is exposed until a real external adapter is implemented and passes the same contract/eval gates.
+当前不暴露 `--planner llm`，因为真实外部 LLM adapter 尚未实现，也没有通过相同的 contract/eval gates。
 
-## Run Eval
+## 如何运行 Eval
+
+运行自动化 eval：
 
 ```bash
 python3 main.py eval
 python3 main.py eval --planner rule
 python3 -m sales_agent_harness.eval_runner --cases sales_agent_harness/eval_cases.yaml
+```
+
+运行单元测试：
+
+```bash
 python3 -m pytest -q
 ```
 
-The eval suite covers pricing hallucination, metric guarantees, customer cases, feature grounding, legal/security handoff, booking preconditions, invalid/corrected email, timezone ambiguity, CRM write success/failure, cross-turn outbox/idempotency, prompt injection, lead-history conflict, KB no-result/restricted cases, and high-value custom quote handoff.
+当前 eval suite 覆盖以下风险：
 
-## Architecture
+- 价格幻觉和用户锚定价格
+- 效果指标保证
+- 客户案例和客户名称编造
+- 产品能力 grounding
+- 法务、安全、采购、定制报价 handoff
+- Demo 预约前置条件和 slot 确认
+- 无效邮箱、更正邮箱、歧义时区
+- CRM 写入成功/失败
+- 跨轮 outbox、idempotency 和部分成功补偿
+- prompt injection
+- lead history 与当前用户信息冲突
+- KB no-result / restricted 文档
+- 高价值线索和高风险人工接管
 
-The project is organized as an Agent Harness rather than a prompt-only sales bot. The LLM or mock LLM proposes candidate intent, facets, and tool calls; deterministic code decides what is allowed, executes tools, validates claims, and advances business state.
+## 架构说明
 
-- `main.py`: CLI entrypoint for run, eval, and prompt comparison.
-- `sales_agent_harness/harness.py`: orchestration layer for state loading, planning, validation, tool execution, fallback handling, and response shaping.
-- `sales_agent_harness/policy.py`: rule-based planner, mock LLM planner wrapper, and allowed-action routing.
-- `sales_agent_harness/state.py`: lead memory, qualification scoring, booking state transitions, CRM payload construction, and evidence policy updates.
-- `sales_agent_harness/validators.py`: precondition and postcondition guardrails for tool permissions, booking truth, CRM consistency, and unsupported claims.
-- `sales_agent_harness/tools.py`: local mock implementations for lead context, KB search, calendar slots, demo booking, CRM notes, handoff, and outbox.
-- `sales_agent_harness/grounding.py`: requested-facet extraction and evidence matching for product, pricing, metric, customer-case, and technical/security claims.
-- `sales_agent_harness/eval_runner.py` and `sales_agent_harness/eval_cases.yaml`: deterministic regression evals for key safety and workflow failures.
-- `tests/`: unit and integration tests for tools, validators, grounding, normalizer behavior, prompt integration, and CLI surface.
+项目刻意实现为 Agent Harness，而不是只写一个销售 prompt。核心原则是：
 
-## Compare Prompts
+> LLM 或 mock LLM 只提出候选 intent、facet 和 tool calls；确定性代码负责判断动作是否允许、执行工具、校验回复、推进状态。
 
-```bash
-python3 main.py compare-prompts
-python3 main.py compare-prompts --strict
-```
+主要模块：
 
-This command is a local prompt-contract regression report, not a fair online A/B test. `baseline_prompt` is a deliberately minimal sanity baseline, not evidence of real historical prompt iteration. It emits one schema:
+- `main.py`：CLI 入口，支持 `run`、`eval`、`compare-prompts`。
+- `sales_agent_harness/harness.py`：编排层，负责加载状态、调用 planner、前置校验、执行工具、状态迁移、fallback 和输出整形。
+- `sales_agent_harness/policy.py`：规则 planner、mock LLM planner 包装、intent routing 和 `allowed_actions` 计算。
+- `sales_agent_harness/state.py`：线索记忆、资格评分、booking 状态机、CRM payload 构造和 evidence policy 更新。
+- `sales_agent_harness/validators.py`：动作前置条件和回复后置条件校验，包括工具权限、预约事实、CRM 一致性和 unsupported claim 拦截。
+- `sales_agent_harness/tools.py`：本地 mock 工具，包括 lead context、KB search、calendar、book demo、CRM note、handoff 和 outbox。
+- `sales_agent_harness/grounding.py`：requested facet 抽取和 evidence 匹配，用于约束价格、指标、客户案例、产品能力、技术/安全声明。
+- `sales_agent_harness/eval_runner.py` 和 `sales_agent_harness/eval_cases.yaml`：确定性 eval runner 和回归 case。
+- `tests/`：工具、validator、grounding、normalizer、prompt 集成和 CLI 输出测试。
 
-- `baseline_prompt`
-- `improved_prompt`
-- `rule_planner`
-- `summary`
+### 核心语义
 
-`--strict` exits non-zero only when the deterministic rule reference fails.
+- `TriggerEvent` 当前只支持 `event_type="conversation"`。
+- `allowed_actions` 是硬权限边界，模型不能绕过。
+- `RuleBasedPlanner` 是确定性业务决策的参考实现。
+- `book_demo.success=true` 是 Demo 已预约的唯一事实来源。
+- `write_crm_note` 不能在 booking 未成功时记录 `Demo booked`。
+- `InMemoryStore` 管理本地 session、booking、CRM notes、handoff、call counts 和 outbox。
+- Outbox 更新必须使用显式 ID 命名空间：`event_id=` 或 `calendar_event_id=`。
+- KB search 返回结构化文档、evidence ids、topics、visibility 和 policy metadata。
+- 价格、效果指标、客户案例、产品能力、技术/安全声明必须由 evidence ids 支撑。
+- Prompt 可以描述规则，但 booking、handoff、CRM 和 grounding 的硬约束必须落在代码里。
 
-## Mock LLM Boundary
+## 输出格式
 
-`MockLLMPlanner` is a local model double for this written exercise. It is useful for prompt-contract regression, schema handling, and comparing weak/strong prompt behavior, but it is not evidence that an external model provider will behave identically.
-
-Before enabling a real LLM adapter, validate these gates:
-
-- Schema repair: malformed or partial model JSON must be repaired once, then fall back to the deterministic planner if still invalid.
-- Prompt injection: model output must remain constrained by `allowed_actions`; validators must block forbidden tools even if the model proposes them.
-- Evidence grounding: high-risk claims must use evidence ids from the current KB call; restricted or mismatched evidence must trigger fallback copy.
-- Eval parity: run the same eval suite plus hidden adversarial cases against the real model path before exposing `--planner llm`.
-- Observability: record prompt version, model metadata, repair attempts, tool proposal, validator errors, and fallback reason in trajectory.
-
-## Grounding
-
-Requested-facet detection is a small keyword table in `sales_agent_harness/grounding.py`. It avoids a long `if` chain without adding a config loader or registry.
-
-## Core Semantics
-
-- `TriggerEvent` currently supports only `event_type="conversation"`. Other triggers should be added only when their payload shape and handlers are known.
-- `allowed_actions` is the hard tool permission boundary.
-- `RuleBasedPlanner` is the source of truth for deterministic business decisions. `prompt_v2.txt` describes planning boundaries but does not own booking or CRM state-machine rules.
-- `book_demo.success=true` is the only source of booking truth.
-- `write_crm_note` cannot record `Demo booked` unless booking succeeded.
-- `InMemoryStore` is a mutable service object for local sessions, bookings, CRM notes, handoffs, call counts, and outbox events.
-- Outbox updates use explicit ID namespaces: `event_id=` or `calendar_event_id=`.
-- KB search returns structured documents, evidence ids, topics, visibility, and policy metadata.
-- The latest KB lookup stores evidence ids, topics, and a simple claim-type coverage dict.
-- Product and technical answers are grounded by requested facets and evidence ids; broad catch-all product facets are avoided.
-- LLM/mock planners may propose intent, facets, and action candidates. Deterministic planners, validators, and state machines enforce booking, handoff, CRM, and evidence rules.
-
-## Output Contract
-
-Default output shows public tool calls and hides tool result payloads/internal state:
+默认输出只暴露公开 tool call 形状，不暴露工具结果 payload 或内部状态：
 
 ```json
 {
@@ -131,20 +139,39 @@ Default output shows public tool calls and hides tool result payloads/internal s
 }
 ```
 
-Default `tool_calls` matches the written-exercise contract and includes only public call shape: `tool_name` and `arguments`. Use `--debug` for executed tool results (`success`, `data`, `error`), trajectory, and full `debug_state`. Use `--include-trajectory` for trajectory without full internal state.
+调试参数：
 
-## Known Issues And MVP Boundaries
+- `--debug`：输出工具执行结果、trajectory 和完整 `debug_state`
+- `--include-trajectory`：输出 trajectory，但不输出完整内部状态
 
-- No production LLM adapter is enabled. `MockLLMPlanner` is a local model double used for prompt-contract regression.
-- No real CRM, calendar, KB, queue, or handoff service is connected. All tool behavior is mocked locally.
-- State is stored in `InMemoryStore`, so data is process-local and not durable across application restarts.
-- `TriggerEvent` supports only `event_type="conversation"` in this MVP.
-- `compare-prompts` is a local prompt-contract report, not an online A/B test or provider benchmark.
-- The KB is a small hand-written fixture. Hidden or broader production KB behavior would need additional eval cases.
-- A real LLM adapter should not be exposed until schema repair, evidence grounding, prompt-injection, observability, and hidden adversarial eval gates pass.
+## Prompt 对比
 
-## Documents
+```bash
+python3 main.py compare-prompts
+python3 main.py compare-prompts --strict
+```
 
-- 第一部分答卷: `docs/part1_answer.md`
-- AI 协作日志: `docs/ai_collaboration_log.md`
-- MVP scope/refactor notes: `docs/mvp_scope_and_refactor_notes.md`
+该命令是本地 prompt-contract regression report，不是线上 A/B test。输出包含：
+
+- `baseline_prompt`
+- `improved_prompt`
+- `rule_planner`
+- `summary`
+
+`--strict` 只在确定性的 rule reference 失败时返回非 0。
+
+## 已知问题
+
+- 没有启用真实生产 LLM adapter；`MockLLMPlanner` 只是本地模型替身，用于 prompt contract regression。
+- 没有连接真实 CRM、Calendar、KB、Queue 或 Handoff 服务；所有工具均为本地 mock。
+- 状态存储在 `InMemoryStore`，只适合本地运行，不具备跨进程/跨重启持久化能力。
+- `TriggerEvent` 当前只支持 `conversation`，没有实现 email、form、CRM event、calendar event 等触发器。
+- `compare-prompts` 只是本地对比报告，不代表真实模型提供商表现。
+- KB 是小型手写 fixture，真实 KB 接入后需要补充 hidden/adversarial eval。
+- 真实 LLM 接入前，需要额外验证 JSON schema repair、prompt injection、evidence grounding、observability 和 hidden eval。
+
+## 文档
+
+- 第一部分答卷：`docs/part1_answer.md`
+- AI 协作日志：`docs/ai_collaboration_log.md`
+- MVP scope/refactor notes：`docs/mvp_scope_and_refactor_notes.md`
